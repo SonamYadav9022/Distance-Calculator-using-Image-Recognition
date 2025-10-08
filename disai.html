@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Hand Distance Measurement</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+</head>
+<body class="flex flex-col items-center justify-center h-screen bg-gray-900 relative">
+
+  <!-- Start Button -->
+  <button id="startBtn" 
+          class="px-6 py-3 mb-4 bg-green-600 hover:bg-green-700 
+                 text-white text-xl font-semibold rounded-xl shadow-lg">
+    Open Camera
+  </button>
+
+  <!-- Video -->
+  <video id="video" class="rounded-2xl shadow-lg hidden" autoplay playsinline></video>
+
+  <!-- Canvas -->
+  <canvas id="output" class="absolute top-0 left-0 hidden"></canvas>
+
+  <!-- Distance Display -->
+  <div id="distance-display"
+       class="absolute top-5 left-1/2 transform -translate-x-1/2 
+              bg-black/70 text-green-400 text-3xl font-bold 
+              px-6 py-3 rounded-2xl shadow-lg z-50 hidden">
+    Distance: <span id="distance-value">--</span>
+  </div>
+
+  <script>
+    const videoElement = document.getElementById('video');
+    const canvasElement = document.getElementById('output');
+    const canvasCtx = canvasElement.getContext('2d');
+    const distanceValueSpan = document.getElementById('distance-value');
+    const startBtn = document.getElementById('startBtn');
+    const distanceDisplay = document.getElementById('distance-display');
+
+    const PX_TO_CM = 37.8; // Approximate scale factor (1 cm ≈ 37.8 px)
+
+    function calculateDistance(hand1, hand2) {
+      const x1 = hand1[8].x * canvasElement.width;
+      const y1 = hand1[8].y * canvasElement.height;
+      const x2 = hand2[8].x * canvasElement.width;
+      const y2 = hand2[8].y * canvasElement.height;
+      const pixelDistance = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+      return pixelDistance / PX_TO_CM; // convert to cm
+    }
+
+    function onResults(results) {
+      canvasElement.width = videoElement.videoWidth;
+      canvasElement.height = videoElement.videoHeight;
+
+      canvasCtx.save();
+      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+      canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+      if (results.multiHandLandmarks) {
+        for (const landmarks of results.multiHandLandmarks) {
+          drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: '#0f0', lineWidth: 4 });
+          drawLandmarks(canvasCtx, landmarks, { color: '#f00', lineWidth: 3 });
+        }
+
+        if (results.multiHandLandmarks.length === 2) {
+          const distance = calculateDistance(results.multiHandLandmarks[0], results.multiHandLandmarks[1]);
+          distanceValueSpan.textContent = `${distance.toFixed(2)} cm`;
+          console.log("Calculated Distance (cm):", distance);
+        } else {
+          distanceValueSpan.textContent = "--";
+        }
+      }
+
+      canvasCtx.restore();
+    }
+
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+
+    hands.setOptions({
+      maxNumHands: 4,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.7
+    });
+
+    hands.onResults(onResults);
+
+    let camera;
+
+    startBtn.addEventListener('click', () => {
+      startBtn.classList.add("hidden");
+      videoElement.classList.remove("hidden");
+      canvasElement.classList.remove("hidden");
+      distanceDisplay.classList.remove("hidden");
+
+      camera = new Camera(videoElement, {
+        onFrame: async () => {
+          await hands.send({ image: videoElement });
+        },
+        width: 640,
+        height: 480
+      });
+      camera.start();
+    });
+  </script>
+</body>
+</html>
